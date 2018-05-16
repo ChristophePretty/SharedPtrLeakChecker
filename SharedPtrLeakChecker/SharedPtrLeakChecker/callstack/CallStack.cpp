@@ -6,7 +6,6 @@
 //  Copyright © 2018 Pretty Simple. All rights reserved.
 //
 
-#include "memory"
 #include "CallStack.h"
 #ifdef __APPLE__
 #include <execinfo.h>   // For backtrace on IOS
@@ -33,6 +32,8 @@ struct android_backtrace_state
     void **current;
     void **end;
 };
+
+std::set<std::map<std::string,int>> callstack::test();
 
 _Unwind_Reason_Code __android_unwind_callback(struct _Unwind_Context* context, void* arg)
 {

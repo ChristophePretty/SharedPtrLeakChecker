@@ -8,13 +8,17 @@
 
 #pragma once
 
-#include <algorithm>
+#include <functional>
+#include <map>
 #include <vector>
+#include <set>
 #include <string>
 
 namespace prettysimple {
     namespace callstack {
         std::vector<std::string> currentCallStack();
         std::string demangle(std::string call);
+        
+        std::set<std::map<std::string,int>> test();
     }
 }

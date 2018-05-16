@@ -7,7 +7,32 @@
 // Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-
+#define SHARED_PTR_LEAK_CHECKER
+#ifdef SHARED_PTR_LEAK_CHECKER
+//template <class _Tp>
+//inline _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+//const _Tp&
+//min(const _Tp& __a, const _Tp& __b);
+//template <class _Tp, class _Compare> _Tp max(const _Tp &a, const _Tp &b);
+//template <class _Tp> bool equal(const _Tp &a, const _Tp &b);
+//template <class _InputIterator1, class _InputIterator2, class _Compare>
+//inline _LIBCPP_INLINE_VISIBILITY
+//bool
+//lexicographical_compare(_InputIterator1 __first1, _InputIterator1 __last1,
+//                        _InputIterator2 __first2, _InputIterator2 __last2, _Compare __comp);
+//template <class _BinaryPredicate, class _ForwardIterator1, class _ForwardIterator2>
+//_ForwardIterator1
+//__find_end(_ForwardIterator1 __first1, _ForwardIterator1 __last1,
+//           _ForwardIterator2 __first2, _ForwardIterator2 __last2, _BinaryPredicate __pred);
+//template <class _ForwardIterator1, class _ForwardIterator2, class _BinaryPredicate>
+//_LIBCPP_CONSTEXPR_AFTER_CXX11 _ForwardIterator1
+//__find_first_of_ce(_ForwardIterator1 __first1, _ForwardIterator1 __last1,
+//                   _ForwardIterator2 __first2, _ForwardIterator2 __last2, _BinaryPredicate __pred);
+//#include <map>
+//#include <vector>
+//#include <string>
+//#include <functional>
+#endif
 #ifndef _LIBCPP_MEMORY
 #define _LIBCPP_MEMORY
 
@@ -638,7 +663,6 @@ void* align(size_t alignment, size_t size, void*& ptr, size_t& space);
 }  // std
 
 */
-
 #include <__config>
 #include <type_traits>
 #include <typeinfo>
@@ -3635,12 +3659,20 @@ public:
 
 template<class _Tp>
 class _LIBCPP_TEMPLATE_VIS shared_ptr;
+
+#ifdef SHARED_PTR_LEAK_CHECKER
 template<class _Tp>
 class _LIBCPP_TEMPLATE_VIS __shared_ptr_leak_checkerT;
 template<class _Tp>
 void shared_ptr_leak_checker_addPtr(shared_ptr<_Tp> *ptr);
 template<class _Tp>
 void shared_ptr_leak_checker_removePtr(shared_ptr<_Tp> *ptr);
+#else
+template<class _Tp>
+void shared_ptr_leak_checker_addPtr(shared_ptr<_Tp> *ptr) {}
+template<class _Tp>
+void shared_ptr_leak_checker_removePtr(shared_ptr<_Tp> *ptr) {}
+#endif
 
 template<class _Tp> class _LIBCPP_TEMPLATE_VIS enable_shared_from_this;
 
@@ -5188,7 +5220,7 @@ shared_ptr<_Tp>::shared_ptr(const weak_ptr<_Yp>& __r,
 {
     if (__cntrl_ == 0)
         __throw_bad_weak_ptr();
-    shared_ptr_leak_checker_addPtr(&__r);
+    shared_ptr_leak_checker_addPtr(this);
 }
 
 template<class _Tp>
@@ -5563,7 +5595,6 @@ struct __noexcept_move_assign_container : public integral_constant<bool,
 #endif
     > {};
 
-
 #ifndef _LIBCPP_HAS_NO_VARIADICS
 template <class _Tp, class _Alloc>
 struct __temp_value {
@@ -5582,50 +5613,97 @@ struct __temp_value {
     ~__temp_value() { _Traits::destroy(__a, __addr()); }
     };
 #endif
-                            
+                                          
+#ifdef SHARED_PTR_LEAK_CHECKER
+template <class _Tp>
+inline _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR_AFTER_CXX11
+const _Tp&
+min(const _Tp& __a, const _Tp& __b);
+template <class _Tp, class _Compare> _Tp max(const _Tp &a, const _Tp &b);
+template <class _Tp> bool equal(const _Tp &a, const _Tp &b);
+template <class _InputIterator1, class _InputIterator2, class _Compare>
+inline _LIBCPP_INLINE_VISIBILITY
+bool
+lexicographical_compare(_InputIterator1 __first1, _InputIterator1 __last1,
+                        _InputIterator2 __first2, _InputIterator2 __last2, _Compare __comp);
+template <class _BinaryPredicate, class _ForwardIterator1, class _ForwardIterator2>
+_ForwardIterator1
+__find_end(_ForwardIterator1 __first1, _ForwardIterator1 __last1,
+           _ForwardIterator2 __first2, _ForwardIterator2 __last2, _BinaryPredicate __pred,
+           forward_iterator_tag, forward_iterator_tag);
+template <class _ForwardIterator1, class _ForwardIterator2, class _BinaryPredicate>
+_LIBCPP_CONSTEXPR_AFTER_CXX11 _ForwardIterator1
+__find_first_of_ce(_ForwardIterator1 __first1, _ForwardIterator1 __last1,
+                   _ForwardIterator2 __first2, _ForwardIterator2 __last2, _BinaryPredicate __pred);
+
 _LIBCPP_END_NAMESPACE_STD
 #include <map>
 #include <vector>
 #include <string>
+#include <functional>
 _LIBCPP_BEGIN_NAMESPACE_STD
 
 class __shared_ptr_leak_checker_abstract {
 public:
-    __shared_ptr_leak_checker_abstract() {}
+    __shared_ptr_leak_checker_abstract(bool enableCallStack)
+    : _enableCallStack(enableCallStack)
+    , _enable(true)
+    {}
     virtual ~__shared_ptr_leak_checker_abstract() {}
-    using LeakData = struct {
-        size_t nbLeaks;
-        vector<size_t> leakUseCount;
+    using LeakInfo = struct {
+        size_t count;
+        vector<vector<string>> sharedIncr;
+        vector<vector<string>> sharedRelease;
     };
-    virtual LeakData getLeaks() = 0;
+    virtual vector<LeakInfo> getLeaks() = 0;
+    virtual string getClassName() = 0;
+    
+    using __shared_ptr_leak_checker_DemangleFunc = function<string(string)>;
+    using __shared_ptr_leak_checker_CallStackFunc = function<vector<string>()>;
+    
+    static string __shared_ptr_leak_checker_demangleFunc(string v, __shared_ptr_leak_checker_DemangleFunc func = nullptr);
+    
+    static vector<string> __shared_ptr_leak_checker_callStackFunc(__shared_ptr_leak_checker_CallStackFunc func = nullptr);
+    
+    void enableCallStack(bool enableCallStack) { _enableCallStack = enableCallStack; }
+    bool enable() const { return _enable; }
+    void disable() { _enable = false; }
+    
+protected:
+    bool _enableCallStack;
+    bool _enable;
+protected:
+
 };
                             
 template <class _Tp>
 class __shared_ptr_leak_checkerT : public __shared_ptr_leak_checker_abstract {
 public:
-    __shared_ptr_leak_checkerT();
-    ~__shared_ptr_leak_checkerT();
+    __shared_ptr_leak_checkerT(bool enableCallStack);
+    virtual ~__shared_ptr_leak_checkerT() override;
     
-    void addPtr(shared_ptr<_Tp> *ptr, function<vector<string>()> callStackFunc);
-    void removePtr(shared_ptr<_Tp> *ptr, function<vector<string>()> callStackFunc);
+    void addPtr(shared_ptr<_Tp> *ptr);
+    void removePtr(shared_ptr<_Tp> *ptr);
     
-    using ptrKey  = _Tp *;
+    using key     = _Tp;
+    using ptrKey  = key *;
     using ptrData = struct {
-        weak_ptr<_Tp> weakRef;
+        weak_ptr<key> weakRef;
         vector<vector<string>> sharedIncr;
         vector<vector<string>> sharedRelease;
     };
-    using ptrMap = map<ptrKey, ptrData>;
-    virtual LeakData getLeaks() override;
+    using ptrMap = map<ptrKey, ptrData,  less<ptrKey>>;
+    virtual vector<LeakInfo> getLeaks() override;
+    virtual string getClassName();
     
 protected:
     ptrMap _ptrs;
-    
 };
 
 template <class _Tp>
-__shared_ptr_leak_checkerT<_Tp>::__shared_ptr_leak_checkerT()
-: _ptrs()
+__shared_ptr_leak_checkerT<_Tp>::__shared_ptr_leak_checkerT(bool enableCallStack)
+: __shared_ptr_leak_checker_abstract(enableCallStack)
+, _ptrs()
 {
 }
 
@@ -5635,18 +5713,22 @@ __shared_ptr_leak_checkerT<_Tp>::~__shared_ptr_leak_checkerT()
 }
 
 template <class _Tp>
-void __shared_ptr_leak_checkerT<_Tp>::addPtr(shared_ptr<_Tp> *ptr, function<vector<string>()> callStackFunc)
+void __shared_ptr_leak_checkerT<_Tp>::addPtr(shared_ptr<_Tp> *ptr)
 {
     if (!ptr || !(*ptr))
         return;
     if (_ptrs.count(ptr->__ptr_) == 0)
-        _ptrs.emplace(ptr->__ptr_, ptrData{ *ptr, { callStackFunc ? callStackFunc() : vector<string>{} }, {} });
-    else
-        _ptrs[ptr->__ptr_].sharedIncr.emplace_back(callStackFunc ? callStackFunc() : vector<string>{});
+        _ptrs.emplace(ptr->__ptr_, ptrData{ *ptr, {}, {} });
+    if (_enableCallStack) {
+        auto &arr = _ptrs[ptr->__ptr_].sharedIncr;
+        if (arr.size() < ptr->use_count())
+            arr.resize(ptr->use_count(), {});
+        arr[ptr->use_count() - 1] = __shared_ptr_leak_checker_callStackFunc();
+    }
 }
                             
 template <class _Tp>
-void __shared_ptr_leak_checkerT<_Tp>::removePtr(shared_ptr<_Tp> *ptr, function<vector<string>()> callStackFunc)
+void __shared_ptr_leak_checkerT<_Tp>::removePtr(shared_ptr<_Tp> *ptr)
 {
     if (!ptr || !(*ptr))
         return;
@@ -5654,19 +5736,40 @@ void __shared_ptr_leak_checkerT<_Tp>::removePtr(shared_ptr<_Tp> *ptr, function<v
     
     if (ptrInfo.weakRef.expired())
         _ptrs.erase(ptr->__ptr_);
-    else
-        ptrInfo.sharedRelease.emplace_back(callStackFunc ? callStackFunc() : vector<string>{});
+    else if (_enableCallStack) {
+        auto &arr = ptrInfo.sharedRelease;
+        if (arr.size() < ptrInfo.weakRef.use_count())
+            arr.resize(ptrInfo.weakRef.use_count(), {});
+        arr[ptrInfo.weakRef.use_count() - 1] = __shared_ptr_leak_checker_callStackFunc();
+    }
 }
 
 template <class _Tp>
-__shared_ptr_leak_checker_abstract::LeakData __shared_ptr_leak_checkerT<_Tp>::getLeaks()
+vector<__shared_ptr_leak_checker_abstract::__shared_ptr_leak_checker_abstract::LeakInfo> __shared_ptr_leak_checkerT<_Tp>::getLeaks()
 {
-    LeakData ret{_ptrs.size(), {}};
+    // First clean expired ref
+    for(auto it = _ptrs.begin(); it != _ptrs.end(); )
+        if (it->second.weakRef.expired())
+            it = _ptrs.erase(it);
+        else
+            it++;
+    vector<LeakInfo> ret;
     for(const auto &item : _ptrs)
-        ret.leakUseCount.emplace_back(item.second.weakRef.use_count());
+        ret.emplace_back(LeakInfo{
+        item.second.weakRef.use_count(),
+        item.second.sharedIncr,
+        item.second.sharedRelease
+        });
+
     return ret;
 }
 
+template <class _Tp>
+string __shared_ptr_leak_checkerT<_Tp>::getClassName()
+{
+    return __shared_ptr_leak_checker_abstract::__shared_ptr_leak_checker_demangleFunc(typeid(__shared_ptr_leak_checkerT<_Tp>).name());
+}
+                            
 class shared_ptr_leak_checker {
 public:
     template <class _Tp>
@@ -5676,22 +5779,29 @@ public:
     
     static shared_ptr_leak_checker &getInstance();
     
-    void setCallStackFunc(function<vector<string>()> callStackFunc) { _callStackFunc = callStackFunc;}
-    void setDemagleFunc(function<string(string)> demangleFunc) { _demangleFunc = demangleFunc;}
+    template <class _Tp>
+    void enableCallStack(); // Enable call stack for this type only
+    template <class _Tp>
+    void disable(); // Disable for a given class
     
-    map<string,__shared_ptr_leak_checker_abstract::LeakData> getNewLeaks(bool filterEmpty = true) const;
+    void setCallStackFunc(__shared_ptr_leak_checker_abstract::__shared_ptr_leak_checker_CallStackFunc callStackFunc) { __shared_ptr_leak_checker_abstract::__shared_ptr_leak_checker_callStackFunc(callStackFunc); }
+    void setDemagleFunc(__shared_ptr_leak_checker_abstract::__shared_ptr_leak_checker_DemangleFunc demangleFunc)     { __shared_ptr_leak_checker_abstract::__shared_ptr_leak_checker_demangleFunc("", demangleFunc);   }
+    
+    map<string,vector<__shared_ptr_leak_checker_abstract::LeakInfo>> getLeaks() const;
     
 protected:
     using CheckerData = struct {
         string className;
+        bool enableCallStack;
         unique_ptr<__shared_ptr_leak_checker_abstract> checker;
     };
+    bool _enable;
+    bool _enableAllCallStack;
     map<size_t,CheckerData> _checkers;
-    function<vector<string>()> _callStackFunc;
-    function<string(string)> _demangleFunc;
-    
-    shared_ptr_leak_checker() : _checkers(), _callStackFunc(), _demangleFunc([](string a) { return a; }) {}
-    ~shared_ptr_leak_checker() {}
+
+    shared_ptr_leak_checker(bool enable) : _enable(enable), _enableAllCallStack(true), _checkers() {
+    }
+    virtual ~shared_ptr_leak_checker() {}
     
     template <class _Tp>
     __shared_ptr_leak_checkerT<_Tp> *getChecker(shared_ptr<_Tp> *ptr);
@@ -5708,18 +5818,39 @@ void shared_ptr_leak_checker_removePtr(shared_ptr<_Tp> *ptr)
 {
     shared_ptr_leak_checker::getInstance().removePtr(ptr);
 }
+
+template <class _Tp>
+void shared_ptr_leak_checker::enableCallStack()
+{
+    // First clear any checkers created before if this is the first call
+    if (_enableAllCallStack)
+        for(auto &checker : _checkers)
+            checker.second.checker->enableCallStack(false);
+    
+    _enableAllCallStack = false;
+    
+    auto checker = getChecker<_Tp>(nullptr);
+    checker->enableCallStack(true);
+}
+                            
+template <class _Tp>
+void shared_ptr_leak_checker::disable()
+{
+    auto checker = getChecker<_Tp>(nullptr);
+    checker->disable();
+}
                             
 template <class _Tp>
 __shared_ptr_leak_checkerT<_Tp> *shared_ptr_leak_checker::getChecker(shared_ptr<_Tp> *ptr) {
-    auto hash = typeid(_Tp).hash_code();
+    auto hash = typeid(__shared_ptr_leak_checkerT<_Tp>).hash_code();
     __shared_ptr_leak_checkerT<_Tp> *checker = nullptr;
     
     if (_checkers.count(hash) == 0) {
-        auto checkerU = make_unique<__shared_ptr_leak_checkerT<_Tp>>();
-        checker = checkerU.get();
-        _checkers[hash] = { _demangleFunc(typeid(_Tp).name()), move(checkerU) };
-    } else
-        checker = dynamic_cast<__shared_ptr_leak_checkerT<_Tp>*>(_checkers[hash].checker.get());
+        _checkers[hash].checker   = make_unique<__shared_ptr_leak_checkerT<_Tp>>(_enableAllCallStack);
+        _checkers[hash].className = _checkers[hash].checker->getClassName();
+    }
+    
+    checker = dynamic_cast<__shared_ptr_leak_checkerT<_Tp>*>(_checkers[hash].checker.get());
     assert(checker);
     return checker;
 }
@@ -5727,17 +5858,34 @@ __shared_ptr_leak_checkerT<_Tp> *shared_ptr_leak_checker::getChecker(shared_ptr<
 template <class _Tp>
 void shared_ptr_leak_checker::addPtr(shared_ptr<_Tp> *ptr)
 {
-    getChecker(ptr)->addPtr(ptr, _callStackFunc);
+    if (_enable) {
+        auto checker = getChecker(ptr);
+        if (checker->enable())
+            checker->addPtr(ptr);
+    }
 }
                             
 template <class _Tp>
 void shared_ptr_leak_checker::removePtr(shared_ptr<_Tp> *ptr)
 {
-    getChecker(ptr)->removePtr(ptr, _callStackFunc);
+    if (_enable) {
+        auto checker = getChecker(ptr);
+        if (checker->enable())
+            checker->removePtr(ptr);
+    }
 }
-
+#endif
+                            
 _LIBCPP_END_NAMESPACE_STD
 
 _LIBCPP_POP_MACROS
 
+#ifdef SHARED_PTR_LEAK_CHECKER
+#include <map>
+#include <vector>
+#include <string>
+#include <functional>
+#endif
+
 #endif  // _LIBCPP_MEMORY
+                                                                                                                                                                              
